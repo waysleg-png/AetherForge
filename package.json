@@ -1,6 +1,6 @@
 {
   "name": "AetherForge",
-  "version": "1.0.1",
+  "version": "1.0.6",
   "description": "AetherForge Optimizer",
   "main": "./out/main/index.js",
   "author": "waysleg-png",
@@ -169,6 +169,7 @@
   "build": {
     "appId": "com.aetherforge.optimizer",
     "productName": "AetherForge",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "npmRebuild": false,
     "directories": {
       "output": "dist"

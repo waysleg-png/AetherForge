@@ -2,49 +2,19 @@ import { db, gamesSublevel, levelKeys } from "@main/level";
 import icon from "@resources/icon.png?asset";
 import trayIconDark from "@resources/tray-icon-dark.png?asset";
 import trayIcon from "@resources/tray-icon.png?asset";
-import {
-  AUTH_WINDOW_CONTENT_HEIGHT,
-  AUTH_WINDOW_CONTENT_WIDTH,
-  AuthPage,
-  CUSTOM_WINDOW_BORDER_WIDTH,
-  CUSTOM_WINDOW_TITLE_BAR_HEIGHT,
-} from "@shared";
-import type {
-  AchievementCustomNotificationPosition,
-  AchievementNotificationInfo,
-  ChatWindowState,
-  PendingChatFriend,
-  ScreenState,
-  UserFriend,
-  UserPreferences,
-} from "@types";
+import type { UserPreferences } from "@types";
 import {
   BrowserWindow,
   Menu,
-  MenuItem,
-  MenuItemConstructorOptions,
   Tray,
-  WebContentsView,
   app,
   nativeImage,
   nativeTheme,
-  screen,
-  shell,
   ipcMain,
 } from "electron";
-import { t } from "i18next";
-import { orderBy } from "lodash-es";
 import path from "node:path";
 import fs from "node:fs";
 import http from "node:http";
-import UserAgent from "user-agents";
-
-const EMPTY_CHAT_WINDOW_STATE: ChatWindowState = {
-  activeFriendId: null,
-  openFriendIds: [],
-};
-
-const FRIENDS_WINDOW_SHOW_FALLBACK_MS = 400;
 
 interface CreateMainWindowOptions {
   forceBigPicture?: boolean;
@@ -52,26 +22,11 @@ interface CreateMainWindowOptions {
 
 export class WindowManager {
   private static mainWindowInstance: Electron.BrowserWindow | null = null;
-  private static gameLauncherWindowInstance: Electron.BrowserWindow | null = null;
-  private static bigPicture: Electron.BrowserWindow | null = null;
-  private static friendsWindow: Electron.BrowserWindow | null = null;
-  private static markFriendsWindowReady: (() => void) | null = null;
-  private static chatWindow: Electron.BrowserWindow | null = null;
-  private static pendingChatFriends: PendingChatFriend[] = [];
-  private static chatWindowState: ChatWindowState = EMPTY_CHAT_WINDOW_STATE;
-  private static authWindow: Electron.BrowserWindow | null = null;
-  private static deferredMainMaximize = false;
-  
+  private static tray: Tray | null = null;
   private static localServerUrl: string | null = null;
-
-  private static readonly editorWindows: Map<string, BrowserWindow> = new Map();
 
   public static get mainWindow(): Electron.BrowserWindow | null {
     return this.mainWindowInstance;
-  }
-
-  public static get gameLauncherWindow(): Electron.BrowserWindow | null {
-    return this.gameLauncherWindowInstance;
   }
 
   public static clearMainWindow(): void {
@@ -83,32 +38,54 @@ export class WindowManager {
   private static readonly MIN_WINDOW_WIDTH = 1024;
   private static readonly MIN_WINDOW_HEIGHT = 600;
 
-  private static initialConfigInitializationMainWindow: Electron.BrowserWindowConstructorOptions = {
-    width: WindowManager.DEFAULT_WINDOW_WIDTH,
-    height: WindowManager.DEFAULT_WINDOW_HEIGHT,
-    minWidth: WindowManager.MIN_WINDOW_WIDTH,
-    minHeight: WindowManager.MIN_WINDOW_HEIGHT,
-    icon,
-    trafficLightPosition: { x: 16, y: 16 },
-    webPreferences: {
-      preload: path.join(__dirname, "../preload/index.mjs"),
-      sandbox: false,
-      webSecurity: false,
-    },
-    show: true,
-    frame: false,
-    backgroundColor: "#05050a",
-  };
+  // --- ФУНКЦИЯ ПОИСКА ИКОНКИ ---
+  private static getAppIconPath(): string {
+    if (app.isPackaged) {
+      // electron-builder кладет папку build в корень app.asar
+      const p1 = path.join(process.resourcesPath, "app.asar", "build", "icon.ico");
+      if (fs.existsSync(p1)) return p1;
+      
+      // Запасной путь (на случай другой структуры)
+      const p2 = path.join(process.resourcesPath, "app.asar", "out", "resources", "icon.png");
+      if (fs.existsSync(p2)) return p2;
+
+      return "";
+    }
+    // В режиме разработки возвращаем импортированный путь
+    return icon;
+  }
+
+  private static getInitialConfig(): Electron.BrowserWindowConstructorOptions {
+    return {
+      width: WindowManager.DEFAULT_WINDOW_WIDTH,
+      height: WindowManager.DEFAULT_WINDOW_HEIGHT,
+      minWidth: WindowManager.MIN_WINDOW_WIDTH,
+      minHeight: WindowManager.MIN_WINDOW_HEIGHT,
+      icon: WindowManager.getAppIconPath() || undefined,
+      trafficLightPosition: { x: 16, y: 16 },
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/index.mjs"),
+        sandbox: false,
+        webSecurity: false,
+      },
+      show: true,
+      frame: false,
+      backgroundColor: "#05050a",
+    };
+  }
 
   public static async loadWindowURL(window: BrowserWindow, hash: string = "") {
+    if (app.isPackaged) {
+      await window.loadFile(path.join(__dirname, "../renderer/index.html"), { hash });
+      return;
+    }
+    
     if (this.localServerUrl) {
       window.loadURL(`${this.localServerUrl}#/${hash}`);
     } else if (process.env["ELECTRON_RENDERER_URL"]) {
       window.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}#/${hash}`);
     } else {
-      window.loadFile(path.join(__dirname, "../renderer/index.html"), {
-        hash,
-      });
+      window.loadFile(path.join(__dirname, "../renderer/index.html"), { hash });
     }
   }
 
@@ -118,7 +95,7 @@ export class WindowManager {
     }
   }
 
-  public static async createMainWindow(options?: CreateMainWindowOptions) {
+  public static async createMainWindow(_options?: CreateMainWindowOptions) {
     if (this.mainWindow) return;
 
     // --- ЗАПУСК ЛОКАЛЬНОГО HTTP-СЕРВЕРА ---
@@ -169,10 +146,18 @@ export class WindowManager {
       })
       .catch(() => null);
 
-    const mainWindow = new BrowserWindow(
-      this.initialConfigInitializationMainWindow
-    );
+    const mainWindow = new BrowserWindow(this.getInitialConfig());
     this.mainWindowInstance = mainWindow;
+
+    // --- ПРИНУДИТЕЛЬНО УСТАНАВЛИВАЕМ ИКОНКУ ---
+    const iconPath = this.getAppIconPath();
+    if (iconPath) {
+      try {
+        mainWindow.setIcon(iconPath);
+      } catch (e) {
+        console.warn("Не удалось установить иконку окна:", e);
+      }
+    }
 
     // --- ОБРАБОТЧИКИ ДЛЯ КАСТОМНЫХ КНОПОК ОКНА ---
     ipcMain.removeHandler("minimizeMainWindow");
@@ -224,7 +209,7 @@ export class WindowManager {
   }
 
   public static sendToAppWindows(channel: string, ...args: unknown[]) {
-    const windows = [this.mainWindow, this.bigPicture, this.friendsWindow, this.chatWindow];
+    const windows = [this.mainWindow];
     for (const window of windows) {
       if (!window || window.isDestroyed()) continue;
       window.webContents.send(channel, ...args);
@@ -235,22 +220,62 @@ export class WindowManager {
     this.sendToAppWindows("on-downloads-updated");
   }
 
+  // --- ОБНОВЛЕННЫЙ МЕТОД С КОНТЕКСТНЫМ МЕНЮ ---
   public static async createSystemTray(language: string) {
-    let tray: Tray;
-    if (process.platform === "win32") {
-      tray = new Tray(nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? trayIcon : trayIconDark);
+    if (this.tray) return;
+
+    let finalIcon: Electron.NativeImage;
+    const iconPath = this.getAppIconPath();
+    
+    if (iconPath) {
+      finalIcon = nativeImage.createFromPath(iconPath);
     } else {
-      tray = new Tray(trayIcon);
+      finalIcon = nativeImage.createEmpty();
     }
-    tray.setToolTip("AetherForge");
-    tray.addListener("click", () => {
+
+    // Если иконка не загрузилась, используем дефолтную (для трея)
+    if (finalIcon.isEmpty()) {
+      const defaultTrayPath = app.isPackaged
+        ? path.join(process.resourcesPath, "app.asar", "out", "resources", "tray-icon.png")
+        : trayIcon;
+      finalIcon = nativeImage.createFromPath(defaultTrayPath);
+    }
+
+    this.tray = new Tray(finalIcon);
+    this.tray.setToolTip("AetherForge");
+    
+    this.tray.addListener("click", () => {
       if (this.mainWindow) {
-        this.mainWindow.show(); // Показываем окно, если оно скрыто
+        this.mainWindow.show();
         this.mainWindow.focus();
       } else {
         this.createMainWindow();
       }
     });
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: language === "en" ? "Open AetherForge" : "Открыть AetherForge",
+        click: () => {
+          if (this.mainWindow) {
+            this.mainWindow.show();
+            this.mainWindow.focus();
+          } else {
+            this.createMainWindow();
+          }
+        },
+      },
+      { type: "separator" },
+      {
+        label: language === "en" ? "Quit" : "Выход",
+        click: () => {
+          (app as any).isQuitting = true;
+          app.quit();
+        },
+      },
+    ]);
+
+    this.tray.setContextMenu(contextMenu);
   }
 
   public static redirect(hash: string) {
@@ -266,6 +291,6 @@ export class WindowManager {
   public static closeFriendsWindow() {}
   public static closeChatWindow() {}
   public static closeGameLauncherWindow() {}
-  public static async createGameLauncherWindow(shop: string, objectId: string) {}
-  public static sendAchievementToFocusedWindow(pos: any, ach: any) { return false; }
+  public static async createGameLauncherWindow(_shop: string, _objectId: string) {}
+  public static sendAchievementToFocusedWindow(_pos: any, _ach: any) { return false; }
 }

@@ -1,24 +1,33 @@
 import { useState, useEffect } from "react";
-import { Download, RefreshCw, CheckCircle2, X } from "lucide-react";
+import { Download, RefreshCw, CheckCircle2 } from "lucide-react";
 
 export function UpdateChecker() {
   const [status, setStatus] = useState<"idle" | "checking" | "no-updates" | "downloading" | "ready" | "error">("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
+  const [appVersion, setAppVersion] = useState("1.0.0");
 
   useEffect(() => {
-    // Слушаем прогресс загрузки
+    // Получаем актуальную версию из главного процесса
+    const fetchVersion = async () => {
+      try {
+        const ver = await (window as any).electron?.getVersion?.();
+        if (ver) setAppVersion(ver);
+      } catch (e) {
+        console.error("Не удалось получить версию:", e);
+      }
+    };
+    fetchVersion();
+
     const unsubProgress = (window as any).electron?.onUpdateProgress?.((data: any) => {
       setStatus("downloading");
       setProgress(data.percent);
     });
 
-    // Слушаем завершение загрузки
     const unsubDownloaded = (window as any).electron?.onUpdateDownloaded?.(() => {
       setStatus("ready");
     });
 
-    // Слушаем ошибки
     const unsubError = (window as any).electron?.onUpdateError?.((msg: string) => {
       setStatus("error");
       setErrorMsg(msg);
@@ -38,7 +47,6 @@ export function UpdateChecker() {
       const res = await (window as any).electron?.checkForUpdates?.();
       
       if (res?.available) {
-        // Обновление найдено — начинается автоскачивание
         setStatus("downloading");
       } else {
         setStatus("no-updates");
@@ -56,7 +64,6 @@ export function UpdateChecker() {
   return (
     <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-2 transition-all">
       
-      {/* Левая часть - версия или статус */}
       <div className="flex items-center gap-2 text-xs text-white/50 min-w-0">
         <Download size={14} className="shrink-0" />
         
@@ -67,11 +74,10 @@ export function UpdateChecker() {
         ) : status === "error" ? (
           <span className="text-red-400 truncate" title={errorMsg}>Ошибка</span>
         ) : (
-          <span className="truncate">v1.0.0</span>
+          <span className="truncate">v{appVersion}</span>
         )}
       </div>
 
-      {/* Правая часть - кнопка или прогресс */}
       {status === "downloading" ? (
         <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden shrink-0">
           <div 

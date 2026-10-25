@@ -45,8 +45,12 @@ const { autoUpdater } = updater;
 autoUpdater.setFeedURL({ provider: "github", owner: "waysleg-png", repo: "AetherForge" });
 autoUpdater.logger = logger;
 
+// Фикс: принудительно закрываем второй экземпляр, чтобы не висел в фоне
 const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) app.quit();
+if (!gotTheLock) {
+  app.quit();
+  app.exit(0);
+}
 
 if (process.platform === "linux") app.commandLine.appendSwitch("ozone-platform-hint", "auto");
 
@@ -68,6 +72,9 @@ if (process.defaultApp) {
 
 const initializeApp = async () => {
   refreshPortableShortcutLauncher();
+  // Небольшая задержка, чтобы Windows успела освободить ресурсы
+  await new Promise(resolve => setTimeout(resolve, 100));
+
   electronApp.setAppUserModelId("gg.hydralauncher.hydra");
 
   protocol.handle("local", (request) => {
@@ -217,6 +224,11 @@ ipcMain.handle("set-auto-launch", (_event, enabled: boolean) => {
 
 ipcMain.handle("get-auto-launch", () => {
   return app.getLoginItemSettings().openAtLogin;
+});
+
+// --- ВЕРСИЯ ПРИЛОЖЕНИЯ (ДЛЯ UPDATE CHECKER) ---
+ipcMain.handle("getVersion", () => {
+  return app.getVersion();
 });
 
 ipcMain.handle("sysopt:system-stats", async () => {
