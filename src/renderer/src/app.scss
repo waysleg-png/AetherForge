@@ -1,0 +1,99 @@
+@use "./scss/globals.scss";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================
+   БАЗОВЫЕ СТИЛИ (ТЕМА "НЕОН" - ПО УМОЛЧАНИЮ)
+   ========================================= */
+body {
+  margin: 0;
+  background-color: #05050a;
+  background-image: linear-gradient(rgba(5, 5, 10, 0.7), rgba(5, 5, 10, 0.85)), url('./assets/bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  color: white;
+  font-family: 'Inter', 'Noto Sans', sans-serif;
+  overflow: hidden;
+  user-select: none;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Стеклянная панель (по умолчанию для Неона) */
+.glass-panel {
+  background: rgba(15, 15, 25, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+}
+
+/* Неоновая тень для круга */
+.circle-glow {
+  filter: drop-shadow(0 0 15px rgba(34, 211, 238, 0.4)) drop-shadow(0 0 30px rgba(168, 85, 247, 0.2));
+}
+
+/* Кастомные кнопки окна */
+.window-control { 
+  -webkit-app-region: no-drag; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  width: 46px; 
+  height: 32px; 
+  transition: all 0.2s; 
+  color: rgba(255, 255, 255, 0.6); 
+}
+.window-control:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+.window-control.close:hover { background: #ef4444; color: white; }
+
+/* Красивые скроллбары */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+
+/* =========================================
+   ТЕМА: МИНИМАЛИЗМ (Светлая)
+   ========================================= */
+body.theme-minimalist {
+  background-image: none; /* Убираем космос */
+  background-color: #f5f5f7;
+  color: #1a1a1a;
+}
+
+body.theme-minimalist .glass-panel {
+  background: #ffffff;
+  border-color: #e5e7eb;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+/* Принудительно делаем текст темным в минимализме */
+body.theme-minimalist .text-white,
+body.theme-minimalist .text-white\/50,
+body.theme-minimalist .text-white\/40,
+body.theme-minimalist .text-white\/70 {
+  color: #1a1a1a !important;
+}
+
+body.theme-minimalist .text-white\/40 {
+  color: #666666 !important; /* Делаем серым для читаемости */
+}
+
+
+/* =========================================
+   ТЕМА: ТЁМНЫЙ (Глубокий черный)
+   ========================================= */
+body.theme-dark {
+  /* Оставляем космос, но делаем его намного темнее */
+  background-image: linear-gradient(rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.95)), url('./assets/bg.jpg');
+  color: #e0e0e0;
+}
+
+body.theme-dark .glass-panel {
+  background: rgba(10, 10, 15, 0.85);
+  border-color: rgba(255, 255, 255, 0.05);
+}
