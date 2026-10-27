@@ -19,15 +19,18 @@ export function UpdateChecker() {
     };
     fetchVersion();
 
+    // Слушаем прогресс скачивания
     const unsubProgress = (window as any).electron?.onUpdateProgress?.((data: any) => {
       setStatus("downloading");
       setProgress(data.percent);
     });
 
+    // Слушаем, когда обновление скачалось
     const unsubDownloaded = (window as any).electron?.onUpdateDownloaded?.(() => {
       setStatus("ready");
     });
 
+    // Слушаем ошибки
     const unsubError = (window as any).electron?.onUpdateError?.((msg: string) => {
       setStatus("error");
       setErrorMsg(msg);
@@ -41,6 +44,7 @@ export function UpdateChecker() {
     };
   }, []);
 
+  // Проверка обновлений по кнопке
   const handleCheck = async () => {
     setStatus("checking");
     try {
@@ -57,8 +61,13 @@ export function UpdateChecker() {
     }
   };
 
-  const handleRestart = () => {
-    (window as any).electron?.restartAndInstallUpdate?.();
+  // Установка и перезапуск
+  const handleInstall = async () => {
+    try {
+      await (window as any).electron?.restartAndInstallUpdate?.();
+    } catch (e) {
+      console.error("Ошибка установки:", e);
+    }
   };
 
   return (
@@ -87,10 +96,10 @@ export function UpdateChecker() {
         </div>
       ) : status === "ready" ? (
         <button
-          onClick={handleRestart}
-          className="text-xs px-2 py-1 rounded-md transition-all flex items-center gap-1 bg-emerald-500 hover:bg-emerald-400 text-white shrink-0 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+          onClick={handleInstall}
+          className="text-xs px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-white shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.6)] font-semibold animate-pulse"
         >
-          <CheckCircle2 size={12} /> Установить
+          <CheckCircle2 size={14} /> Установить
         </button>
       ) : (
         <button
@@ -105,7 +114,7 @@ export function UpdateChecker() {
           }`}
         >
           {status === "checking" ? (
-            <><RefreshCw size={12} className="animate-spin" /> ...</>
+            <><RefreshCw size={12} className="animate-spin" /> Проверка...</>
           ) : status === "no-updates" ? (
             <><CheckCircle2 size={12} /> Актуально</>
           ) : (

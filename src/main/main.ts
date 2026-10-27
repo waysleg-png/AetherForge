@@ -118,10 +118,6 @@ export const loadState = async () => {
   Ludusavi.copyConfigFileToUserData();
   Ludusavi.copyBinaryToUserData();
 
-  if (process.platform === "linux") {
-    DeckyPlugin.checkAndUpdateIfOutdated();
-    void UmuUpdater.checkForUpdates();
-  }
 
   void watchSteamLibraries();
 

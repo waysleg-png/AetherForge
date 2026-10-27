@@ -1,6 +1,5 @@
 import { db, gamesSublevel, levelKeys } from "@main/level";
 import icon from "@resources/icon.png?asset";
-import trayIconDark from "@resources/tray-icon-dark.png?asset";
 import trayIcon from "@resources/tray-icon.png?asset";
 import type { UserPreferences } from "@types";
 import {
@@ -38,20 +37,12 @@ export class WindowManager {
   private static readonly MIN_WINDOW_WIDTH = 1024;
   private static readonly MIN_WINDOW_HEIGHT = 600;
 
-  // --- ФУНКЦИЯ ПОИСКА ИКОНКИ ---
+  // --- ПОИСК ИКОНКИ (ЖЕСТКИЙ ПУТЬ) ---
   private static getAppIconPath(): string {
     if (app.isPackaged) {
-      // electron-builder кладет папку build в корень app.asar
-      const p1 = path.join(process.resourcesPath, "app.asar", "build", "icon.ico");
-      if (fs.existsSync(p1)) return p1;
-      
-      // Запасной путь (на случай другой структуры)
-      const p2 = path.join(process.resourcesPath, "app.asar", "out", "resources", "icon.png");
-      if (fs.existsSync(p2)) return p2;
-
-      return "";
+      // Иконка точно лежит в resources/build/icon.ico
+      return path.join(process.resourcesPath, "build", "icon.ico");
     }
-    // В режиме разработки возвращаем импортированный путь
     return icon;
   }
 
@@ -61,7 +52,7 @@ export class WindowManager {
       height: WindowManager.DEFAULT_WINDOW_HEIGHT,
       minWidth: WindowManager.MIN_WINDOW_WIDTH,
       minHeight: WindowManager.MIN_WINDOW_HEIGHT,
-      icon: WindowManager.getAppIconPath() || undefined,
+      icon: WindowManager.getAppIconPath(),
       trafficLightPosition: { x: 16, y: 16 },
       webPreferences: {
         preload: path.join(__dirname, "../preload/index.mjs"),
@@ -153,7 +144,12 @@ export class WindowManager {
     const iconPath = this.getAppIconPath();
     if (iconPath) {
       try {
-        mainWindow.setIcon(iconPath);
+        const img = nativeImage.createFromPath(iconPath);
+        if (!img.isEmpty()) {
+          mainWindow.setIcon(img);
+        } else {
+          mainWindow.setIcon(iconPath);
+        }
       } catch (e) {
         console.warn("Не удалось установить иконку окна:", e);
       }
@@ -220,25 +216,22 @@ export class WindowManager {
     this.sendToAppWindows("on-downloads-updated");
   }
 
-  // --- ОБНОВЛЕННЫЙ МЕТОД С КОНТЕКСТНЫМ МЕНЮ ---
+  // --- ТРЕЙ ---
   public static async createSystemTray(language: string) {
     if (this.tray) return;
 
     let finalIcon: Electron.NativeImage;
-    const iconPath = this.getAppIconPath();
     
-    if (iconPath) {
-      finalIcon = nativeImage.createFromPath(iconPath);
+    if (app.isPackaged) {
+      // Жесткий путь к resources/build/icon.ico (тот же, что и для окна)
+      const p1 = path.join(process.resourcesPath, "build", "icon.ico");
+      if (fs.existsSync(p1)) {
+        finalIcon = nativeImage.createFromPath(p1);
+      } else {
+        finalIcon = nativeImage.createFromPath(trayIcon);
+      }
     } else {
-      finalIcon = nativeImage.createEmpty();
-    }
-
-    // Если иконка не загрузилась, используем дефолтную (для трея)
-    if (finalIcon.isEmpty()) {
-      const defaultTrayPath = app.isPackaged
-        ? path.join(process.resourcesPath, "app.asar", "out", "resources", "tray-icon.png")
-        : trayIcon;
-      finalIcon = nativeImage.createFromPath(defaultTrayPath);
+      finalIcon = nativeImage.createFromPath(trayIcon);
     }
 
     this.tray = new Tray(finalIcon);

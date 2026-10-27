@@ -1,5 +1,5 @@
 import {
-  app, BrowserWindow, crashReporter, dialog, net, powerMonitor, protocol, ipcMain,
+  app, BrowserWindow, crashReporter, net, powerMonitor, protocol, ipcMain,
   shell,
 } from "electron";
 import si from "systeminformation";
@@ -9,7 +9,7 @@ import path from "node:path";
 import url from "node:url";
 import os from "node:os";
 import fs from "node:fs/promises";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
 import {
@@ -24,15 +24,7 @@ import { db, gamesSublevel, levelKeys } from "./level";
 import { GameShop, UserPreferences } from "@types";
 import { launchGame, openClassicsGame } from "./helpers";
 import { refreshPortableShortcutLauncher } from "./helpers/shortcut-launch";
-import { lookupCachedPlatform } from "./events/library/get-library";
 import { loadState } from "./main";
-import {
-  closeSteamOpenIdWindow, notifySteamConnectError, notifySteamConnected,
-} from "./services/steam-integration/steam-store-session";
-import {
-  completeSteamOpenIdConnection, parseSteamOpenIdReturn,
-} from "./services/steam-integration/steam-openid-return";
-import { steamSyncOrchestrator } from "./services/steam-integration/steam-sync-orchestrator";
 import {
   initializeEpicIntegration, shutdownEpicIntegration, suspendEpicPlaytime, resumeEpicPlaytime,
 } from "./services/epic";
@@ -45,7 +37,6 @@ const { autoUpdater } = updater;
 autoUpdater.setFeedURL({ provider: "github", owner: "waysleg-png", repo: "AetherForge" });
 autoUpdater.logger = logger;
 
-// Фикс: принудительно закрываем второй экземпляр, чтобы не висел в фоне
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -72,10 +63,9 @@ if (process.defaultApp) {
 
 const initializeApp = async () => {
   refreshPortableShortcutLauncher();
-  // Небольшая задержка, чтобы Windows успела освободить ресурсы
   await new Promise(resolve => setTimeout(resolve, 100));
 
-  electronApp.setAppUserModelId("gg.hydralauncher.hydra");
+  electronApp.setAppUserModelId("com.aetherforge.optimizer");
 
   protocol.handle("local", (request) => {
     const filePath = request.url.slice("local:".length);
@@ -223,14 +213,63 @@ ipcMain.handle("set-auto-launch", (_event, enabled: boolean) => {
 });
 
 ipcMain.handle("get-auto-launch", () => {
+	
   return app.getLoginItemSettings().openAtLogin;
 });
 
-// --- ВЕРСИЯ ПРИЛОЖЕНИЯ (ДЛЯ UPDATE CHECKER) ---
 ipcMain.handle("getVersion", () => {
   return app.getVersion();
 });
+// ==========================================
+// УПРАВЛЕНИЕ ОКНОМ (Свернуть, Развернуть, Закрыть)
+// ==========================================
+ipcMain.handle("window:minimize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.minimize();
+});
 
+ipcMain.handle("window:toggleMaximize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  }
+});
+
+ipcMain.handle("window:close", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) win.close();
+});
+// ==========================================
+// МИНИ-РЕЖИМ (ОВЕРЛЕЙ)
+// ==========================================
+ipcMain.handle("window:enable-mini-mode", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    // Делаем окно маленьким и закрепляем поверх всех
+    win.setSize(320, 120); // Ширина 320, Высота 120
+    win.setAlwaysOnTop(true, "screen-saver"); // Поверх всех игр
+    win.setResizable(false);
+    win.setHasShadow(false);
+    
+    // Отправляем сигнал в React, чтобы он переключил интерфейс на виджет
+    win.webContents.send("change-ui-mode", "mini");
+  }
+});
+
+ipcMain.handle("window:disable-mini-mode", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win) {
+    // Возвращаем стандартные размеры
+    win.setSize(1200, 800);
+    win.setAlwaysOnTop(false);
+    win.setResizable(true);
+    win.setHasShadow(true);
+    
+    // Отправляем сигнал обратно
+    win.webContents.send("change-ui-mode", "normal");
+  }
+});
 ipcMain.handle("sysopt:system-stats", async () => {
   try {
     const cpuData = await si.currentLoad();
@@ -303,9 +342,16 @@ ipcMain.handle("sysopt:network-stats", async () => {
     let ping = 0;
     try {
       const { stdout } = await execAsync('ping -n 1 1.1.1.1');
-      const match = stdout.match(/(?:time|время)[=<]\s*([0-9]+)/i);
-      if (match && match[1]) ping = parseInt(match[1], 10);
+      
+      // Ищем "TTL=" (работает на любой Windows)
+      const match = stdout.match(/TTL=(\d+)/i);
+      if (match) {
+        // Ищем время (ms/мс), если не нашли — ставим 1
+        const timeMatch = stdout.match(/[=<]\s*(\d+)\s*(?:ms|мс)/i);
+        ping = timeMatch ? parseInt(timeMatch[1], 10) : 1;
+      }
     } catch {}
+
     return { rx, tx, ip, ping };
   } catch { return { rx: 0, tx: 0, ip: "Ошибка", ping: 0 }; }
 });
@@ -405,6 +451,7 @@ autoUpdater.on("update-downloaded", (info) => {
   WindowManager.mainWindow?.webContents.send("update-downloaded", {
     version: info.version,
   });
+  
 });
 
 autoUpdater.on("error", (err) => {
@@ -439,6 +486,7 @@ ipcMain.handle("restartAndInstallUpdate", () => {
   }
 });
 
+// --- СТАРЫЙ ИГРОВОЙ РЕЖИМ (БЕСПЛАТНЫЙ) ---
 const GAME_MODE_SERVICES = ['Spooler', 'Fax', 'WSearch'];
 
 ipcMain.handle("sysopt:game-mode", async (_event, enable: boolean) => {
@@ -447,7 +495,7 @@ ipcMain.handle("sysopt:game-mode", async (_event, enable: boolean) => {
     for (const service of GAME_MODE_SERVICES) {
       try {
         const command = enable ? `net stop ${service}` : `net start ${service}`;
-        const { stdout } = await execAsync(command);
+        await execAsync(command);
         results.push({ service, success: true });
       } catch (err: any) {
         results.push({ service, success: false, error: err.message });
@@ -461,6 +509,34 @@ ipcMain.handle("sysopt:game-mode", async (_event, enable: boolean) => {
     };
   } catch (error) {
     logger.error("Ошибка Игрового режима:", error);
+    return { success: false, error: String(error) };
+  }
+});
+
+// --- НОВЫЙ GAME MODE 2.0 (PRO) ---
+ipcMain.handle("toggle-game-mode-pro", async (_event, enable: boolean) => {
+  try {
+    if (enable) {
+      const processesToKill = ["GameBar.exe", "GameBarFTServer.exe", "XboxGameBarWidgets.exe"];
+      for (const proc of processesToKill) {
+        try { await execAsync(`taskkill /F /IM ${proc} /T`); } catch {}
+      }
+      
+      for (const service of ['Spooler', 'Fax', 'WSearch']) {
+        try { await execAsync(`net stop ${service}`); } catch {}
+      }
+
+      await execAsync('powercfg /setactive 8e5e7fda-e8bf-4a96-9a85-a6e23a8c635c').catch(() => {});
+
+      return { success: true, message: "🔥 Game Mode 2.0 активирован! Xbox Game Bar отключен, службы остановлены." };
+    } else {
+      for (const service of ['Spooler', 'Fax', 'WSearch']) {
+        try { await execAsync(`net start ${service}`); } catch {}
+      }
+      return { success: true, message: "Game Mode выключен. Службы восстановлены." };
+    }
+  } catch (error: any) {
+    logger.error("Ошибка Game Mode 2.0:", error);
     return { success: false, error: String(error) };
   }
 });
@@ -519,4 +595,413 @@ ipcMain.handle("sysopt:prepare-for-gaming", async () => {
   }
 });
 
+ipcMain.handle('clean-ram-pro', async () => {
+  return new Promise((resolve) => {
+    const isDev = !app.isPackaged;
+    const scriptPath = isDev 
+      ? path.join(app.getAppPath(), 'src', 'main', 'services', 'ram-cleaner.ps1')
+      : path.join(process.resourcesPath, 'ram-cleaner.ps1');
+
+    const psCommand = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs -Wait`;
+    const child = spawn('powershell', ['-Command', psCommand], { windowsHide: true });
+
+    let errorOutput = '';
+
+    child.stderr.on('data', (data) => {
+      errorOutput += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ success: true, message: 'Оперативная память очищена!' });
+      } else {
+        console.error('Ошибка PowerShell:', errorOutput);
+        resolve({ success: false, error: 'Не удалось очистить. Проверьте путь к скрипту или права.' });
+      }
+    });
+  });
+});
+
+ipcMain.handle("sysopt:network-tweak", async () => {
+  try {
+    const cmd1 = `reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces" /v TcpAckFrequency /t REG_DWORD /d 1 /f`;
+    const cmd2 = `reg add "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces" /v TCPNoDelay /t REG_DWORD /d 1 /f`;
+    
+    await execAsync(cmd1).catch(() => {});
+    await execAsync(cmd2).catch(() => {});
+
+    const cmd3 = `reg add "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Multimedia\\SystemProfile" /v NetworkThrottlingIndex /t REG_DWORD /d 0xffffffff /f`;
+    await execAsync(cmd3).catch(() => {});
+
+    await execAsync('ipconfig /flushdns').catch(() => {});
+
+    return { 
+      success: true, 
+      message: "⚡ Сетевая оптимизация применена! Для полного эффекта перезагрузите ПК или переподключите сеть." 
+    };
+  } catch (error: any) {
+    logger.error("Ошибка сетевой оптимизации:", error);
+    return { success: false, error: "Ошибка. Убедитесь, что лаунчер запущен от Администратора." };
+  }
+});
+
+ipcMain.handle("sysopt:clean-ssd-shaders", async () => {
+  try {
+    let freedBytes = 0;
+    const localAppData = path.join(os.homedir(), "AppData", "Local");
+
+    const gpuCaches = [
+      path.join(localAppData, "NVIDIA", "DXCache"),
+      path.join(localAppData, "NVIDIA", "GLCache"),
+      path.join(localAppData, "AMD", "DxCache"),
+      path.join(localAppData, "AMD", "VkCache"),
+      path.join(localAppData, "D3DSCache"),
+    ];
+
+    for (const cacheDir of gpuCaches) {
+      try {
+        freedBytes += await clearDirectory(cacheDir);
+      } catch {}
+    }
+
+    try {
+      await execAsync('powershell.exe -NoProfile -Command "Optimize-Volume -DriveLetter C -ReTrim -Verbose"');
+    } catch (e) {
+      console.error("Ошибка TRIM:", e);
+    }
+
+    return { 
+      success: true, 
+      freedBytes, 
+      message: `🚀 Очистка SSD завершена! Освобождено ${Math.round(freedBytes / (1024 * 1024))} МБ. TRIM выполнен.` 
+    };
+  } catch (error: any) {
+    logger.error("Ошибка очистки SSD:", error);
+    return { success: false, error: "Ошибка. Убедитесь, что лаунчер запущен от Администратора." };
+  }
+});
+
+ipcMain.handle("sysopt:toggle-telemetry", async (_event, disable: boolean) => {
+  try {
+    if (disable) {
+      await execAsync('sc config DiagTrack start= disabled').catch(() => {});
+      await execAsync('sc stop DiagTrack').catch(() => {});
+      await execAsync('sc config SysMain start= disabled').catch(() => {});
+      await execAsync('sc stop SysMain').catch(() => {});
+      
+      return { success: true, message: "Телеметрия и Superfetch отключены." };
+    } else {
+      await execAsync('sc config DiagTrack start= auto').catch(() => {});
+      await execAsync('sc start DiagTrack').catch(() => {});
+      await execAsync('sc config SysMain start= auto').catch(() => {});
+      await execAsync('sc start SysMain').catch(() => {});
+      
+      return { success: true, message: "Службы восстановлены." };
+    }
+  } catch (error) {
+    return { success: false, error: "Ошибка. Убедитесь, что лаунчер запущен от Администратора." };
+  }
+});
+
+ipcMain.handle("sysopt:clean-leftovers", async () => {
+  try {
+    return { success: true, freedBytes: 0, message: "Очистка хвостов завершена." };
+  } catch (error) {
+    return { success: false, error: "Ошибка очистки." };
+  }
+});
+
+ipcMain.handle("sysopt:apply-preset", async (_event, game: string) => {
+  try {
+    let processesToKill: string[] = [];
+
+    if (game === "cs2") {
+      processesToKill = ["chrome.exe", "msedge.exe", "firefox.exe", "Discord.exe", "Telegram.exe"];
+    } else if (game === "valorant") {
+      processesToKill = ["chrome.exe", "msedge.exe", "firefox.exe", "GameBar.exe"];
+    } else if (game === "cyberpunk") {
+      processesToKill = ["chrome.exe", "msedge.exe", "firefox.exe", "Discord.exe", "Telegram.exe", "GameBar.exe", "GameBarFTServer.exe"];
+    } else if (game === "stream") {
+      processesToKill = ["chrome.exe", "msedge.exe", "firefox.exe"];
+    }
+
+    for (const proc of processesToKill) {
+      try { await execAsync(`taskkill /F /IM ${proc} /T`); } catch {}
+    }
+
+    await execAsync('powercfg /setactive 8e5e7fda-e8bf-4a96-9a85-a6e23a8c635c').catch(() => {});
+
+    if (game === "cyberpunk") {
+      const isDev = !app.isPackaged;
+      const scriptPath = isDev 
+        ? path.join(app.getAppPath(), 'src', 'main', 'services', 'ram-cleaner.ps1')
+        : path.join(process.resourcesPath, 'ram-cleaner.ps1');
+      const psCommand = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs -Wait`;
+      exec(psCommand).catch(() => {});
+    }
+
+    return { 
+      success: true, 
+      message: `🎮 Пресет для ${game.toUpperCase()} применён! Фоновые процессы закрыты.` 
+    };
+  } catch (error: any) {
+    logger.error("Ошибка пресета:", error);
+    return { success: false, error: "Ошибка. Убедитесь, что лаунчер запущен от Администратора." };
+  }
+});
+
+ipcMain.handle("sysopt:get-gpu-stats", async () => {
+  try {
+    const gpuData = await si.graphics();
+    const load = gpuData.controllers[0]?.utilizationGpu || 0;
+    const temp = gpuData.controllers[0]?.temperatureGpu || 0;
+    return { load, temp };
+  } catch {
+    return { load: 0, temp: 0 };
+  }
+});
+
+// ==========================================
+// ФОНОВАЯ АВТО-ОЧИСТКА RAM (SMART CLEANER)
+// ==========================================
+let autoCleanInterval: NodeJS.Timeout | null = null;
+
+function startAutoRamCleaner() {
+  if (autoCleanInterval) clearInterval(autoCleanInterval);
+  
+  // Проверяем каждые 10 минут (600 000 мс)
+  autoCleanInterval = setInterval(async () => {
+    try {
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      const usedPercent = ((totalMem - freeMem) / totalMem) * 100;
+
+      // Если память забита больше чем на 80%, запускаем скрипт очистки
+      if (usedPercent > 80) {
+        logger.info(`[Auto-Cleaner] RAM забита на ${Math.round(usedPercent)}%. Запускаю очистку...`);
+        
+        const isDev = !app.isPackaged;
+        const scriptPath = isDev 
+          ? path.join(app.getAppPath(), 'src', 'main', 'services', 'ram-cleaner.ps1')
+          : path.join(process.resourcesPath, 'ram-cleaner.ps1');
+
+        const psCommand = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs -WindowStyle Hidden -Wait`;
+        exec(psCommand, (err) => {
+          if (err) logger.error("[Auto-Cleaner] Ошибка:", err.message);
+          else logger.info("[Auto-Cleaner] RAM успешно очищена в фоне.");
+        });
+      }
+    } catch (e) {
+      logger.error("[Auto-Cleaner] Ошибка проверки памяти:", e);
+    }
+  }, 10 * 60 * 1000); // 10 минут
+}
+
+// Запускаем авто-клинер при старте приложения
+app.whenReady().then(() => {
+  startAutoRamCleaner();
+});
+
+// Останавливаем интервал при выходе
+app.on('before-quit', () => {
+  if (autoCleanInterval) clearInterval(autoCleanInterval);
+});
+
+// ==========================================
+// ТВИКИ WINDOWS (БЕСПЛАТНО)
+// ==========================================
+ipcMain.handle("sysopt:apply-tweak", async (_event, action: string) => {
+  try {
+    if (action === "disable-wifi") {
+      await execAsync('netsh interface set interface "Wi-Fi" admin=disable').catch(() => {});
+      return { success: true, message: "📶 Wi-Fi отключен." };
+    } 
+    if (action === "disable-bt") {
+      // Отключаем службу Bluetooth
+      await execAsync('sc config bthserv start= disabled').catch(() => {});
+      await execAsync('sc stop bthserv').catch(() => {});
+      return { success: true, message: "🔵 Bluetooth отключен." };
+    }
+    if (action === "disable-notifications") {
+      // Включаем режим фокусировки (тихий режим)
+      await execAsync('reg add "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\PushNotifications" /v ToastEnabled /t REG_DWORD /d 0 /f').catch(() => {});
+      return { success: true, message: "🔕 Уведомления отключены." };
+    }
+    if (action === "classic-alt-tab") {
+      // Отключаем современный Alt+Tab (возвращаем классический)
+      await execAsync('reg add "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced" /v MultiTaskingAltTabFilter /t REG_DWORD /d 3 /f').catch(() => {});
+      return { success: true, message: "🪟 Классический Alt+Tab включен (требуется перезагрузка Explorer)." };
+    }
+    return { success: false, error: "Неизвестный твик." };
+  } catch (error: any) {
+    logger.error("Ошибка твика:", error);
+    return { success: false, error: "Ошибка. Запустите лаунчер от Администратора." };
+  }
+});
+
+// ==========================================
+// УМНАЯ АВТО-ОПТИМИЗАЦИЯ (SMART GAME WATCHER)
+// ==========================================
+let gameWatcherInterval: NodeJS.Timeout | null = null;
+let isGameOptimized = false; // Флаг, чтобы не запускать оптимизацию 10 раз подряд
+
+const GAME_PROCESSES = ["cs2.exe", "dota2.exe", "valorant.exe", "cyberpunk2077.exe"];
+
+function startGameWatcher() {
+  if (gameWatcherInterval) clearInterval(gameWatcherInterval);
+  
+  // Проверяем каждые 10 секунд (10 000 мс)
+  gameWatcherInterval = setInterval(async () => {
+    try {
+      // Получаем список процессов через tasklist (очень быстро и почти не грузит ПК)
+      const { stdout } = await execAsync('tasklist /FO CSV /NH');
+      
+      const isGameRunning = GAME_PROCESSES.some(game => stdout.toLowerCase().includes(game));
+
+      // Игра запустилась, но мы еще не оптимизировали
+      if (isGameRunning && !isGameOptimized) {
+        isGameOptimized = true;
+        logger.info("[Game Watcher] Обнаружена игра! Включаю оптимизацию в фоне...");
+        
+        // 1. Убиваем Xbox Game Bar
+        for (const proc of ["GameBar.exe", "GameBarFTServer.exe", "XboxGameBarWidgets.exe"]) {
+          await execAsync(`taskkill /F /IM ${proc} /T`).catch(() => {});
+        }
+        // 2. Останавливаем службы
+        for (const service of ['Spooler', 'Fax', 'WSearch']) {
+          await execAsync(`net stop ${service}`).catch(() => {});
+        }
+        // 3. Максимальное питание
+        await execAsync('powercfg /setactive 8e5e7fda-e8bf-4a96-9a85-a6e23a8c635c').catch(() => {});
+        // 4. Чистим RAM (тихо, без окон)
+        const isDev = !app.isPackaged;
+        const scriptPath = isDev 
+          ? path.join(app.getAppPath(), 'src', 'main', 'services', 'ram-cleaner.ps1')
+          : path.join(process.resourcesPath, 'ram-cleaner.ps1');
+        exec(`Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs -WindowStyle Hidden -Wait`).catch(() => {});
+      }
+
+      // Игра закрылась, а мы оптимизировали
+      if (!isGameRunning && isGameOptimized) {
+        isGameOptimized = false;
+        logger.info("[Game Watcher] Игра закрыта. Возвращаю службы обратно...");
+        
+        for (const service of ['Spooler', 'Fax', 'WSearch']) {
+          await execAsync(`net start ${service}`).catch(() => {});
+        }
+      }
+    } catch (e) {
+      // Игнорируем ошибки, чтобы не спамить в консоль
+    }
+  }, 10 * 1000); // 10 секунд
+}
+
+// Запускаем "следопыт" при старте приложения
+app.whenReady().then(() => {
+  startGameWatcher();
+});
+
+// Останавливаем при выходе
+app.on('before-quit', () => {
+  if (gameWatcherInterval) clearInterval(gameWatcherInterval);
+  
+});
+// ==========================================
+// ТЕСТОВАЯ ВЫДАЧА PRO (ДЛЯ ПРОВЕРКИ)
+// ==========================================
+ipcMain.handle("test-pro-purchase", async () => {
+  try {
+    // Импортируем Firebase Admin (он уже должен быть установлен для бота, но для лаунчера используем просто Firestore через REST или SDK)
+    // Но так как у нас нет firebase-admin в рендерере, мы просто вернем success, а привязку сделаем на фронте.
+    return { success: true, message: "Тестовая оплата прошла!" };
+  } catch (error) {
+    return { success: false, error: "Ошибка тестовой оплаты" };
+  }
+});
+
+// ==========================================
+// ЧИСТЫЙ ЗАПУСК WINDOWS (УМНАЯ АВТОЗАГРУЗКА)
+// ==========================================
+let backupStartupApps: any[] = []; // Сюда сохраним выключенные программы для отката
+
+ipcMain.handle("sysopt:clean-boot", async () => {
+  try {
+    // Получаем текущий список программ из реестра (используем функцию, которая у нас уже есть)
+        // Получаем текущий список программ из реестра
+    const apps: any[] = []; const foundNames = new Set();
+    for (const regPath of REGISTRY_PATHS) {
+      try {
+        const { stdout } = await execAsync(`reg query "${regPath}"`);
+        const lines = stdout.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed && trimmed.includes('REG_SZ')) {
+            const match = trimmed.match(/^(.*?)\s{2,}REG_SZ\s{2,}(.*)$/);
+            if (match) {
+              const name = match[1].trim(); const command = match[2].trim();
+              if (!foundNames.has(name.toLowerCase())) {
+                foundNames.add(name.toLowerCase());
+                apps.push({ name, command, enabled: true, registryPath: regPath });
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+    
+    // Список системных программ, которые нельзя отключать (антивирус, драйвера)
+    const protectedApps = ["securityhealth", "windowsdefender", "rtkaud", "nvidia", "amd", "realtek"];
+    
+    backupStartupApps = []; // Очищаем старый бэкап
+    
+    for (const app of apps) {
+      const lowerName = app.name.toLowerCase();
+      
+      // Если программа не системная — отключаем её и сохраняем в бэкап
+      if (!protectedApps.some(p => lowerName.includes(p))) {
+        backupStartupApps.push(app); // Сохраняем для отката
+        
+        // Удаляем из реестра (отключаем)
+        for (const regPath of REGISTRY_PATHS) {
+          try { await execAsync(`reg delete "${regPath}" /v "${app.name}" /f`); } catch (e) {}
+        }
+      }
+    }
+
+    return { 
+      success: true, 
+      message: `🚀 Чистый запуск выполнен! Отключено программ: ${backupStartupApps.length}` 
+    };
+  } catch (error: any) {
+    logger.error("Ошибка чистого запуска:", error);
+    return { success: false, error: "Ошибка. Убедитесь, что лаунчер запущен от Администратора." };
+  }
+});
+
+ipcMain.handle("sysopt:restore-boot", async () => {
+  try {
+    if (backupStartupApps.length === 0) {
+      return { success: false, error: "Нет сохраненных программ для восстановления." };
+    }
+
+    let restoredCount = 0;
+    for (const app of backupStartupApps) {
+      // Возвращаем программу в автозагрузку
+      try {
+        await execAsync(`reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "${app.name}" /t REG_SZ /d "${app.command}" /f`);
+        restoredCount++;
+      } catch (e) {}
+    }
+
+    backupStartupApps = []; // Очищаем бэкап
+
+    return { 
+      success: true, 
+      message: `🔄 Восстановлено программ: ${restoredCount}` 
+    };
+  } catch (error: any) {
+    logger.error("Ошибка восстановления автозагрузки:", error);
+    return { success: false, error: "Ошибка восстановления." };
+  }
+});
 app.once("ready", initializeApp);

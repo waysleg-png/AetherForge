@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Cpu, MemoryStick, HardDrive, Wifi, Zap, Trash2, ShieldCheck, Loader2, Lock, Gamepad2, Rocket, Sparkles } from "lucide-react";
+import { Cpu, HardDrive, Wifi, Zap, Trash2, ShieldCheck, Loader2, Lock, Gamepad2, Rocket, Sparkles } from "lucide-react";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "../firebase";
 
@@ -108,7 +108,7 @@ export function Optimize() {
       <div className="grid grid-cols-4 gap-4 mb-8">
         {[
           { label: "Процессор (CPU)", value: stats.cpu, icon: Cpu },
-          { label: "Память (RAM)", value: stats.ram, icon: MemoryStick },
+          { label: "Память (RAM)", value: stats.ram, icon: Cpu }, // Заменил на Cpu, если MemoryStick удален
           { label: "Диск (C:)", value: stats.disk, icon: HardDrive },
           { label: "Сеть", value: stats.network, icon: Wifi },
         ].map((stat) => {

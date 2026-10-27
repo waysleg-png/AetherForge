@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Palette, Rocket, Bell, Globe, Info, ShieldCheck } from "lucide-react";
+import { Palette, Rocket, Bell, Globe, Info, ShieldCheck, Zap } from "lucide-react";
 import { auth } from "../firebase";
 
 export function Settings() {
@@ -187,6 +187,27 @@ export function Settings() {
               <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${notifications ? 'left-7' : 'left-1'}`} />
             </button>
           </div>
+        </div>
+
+        {/* НОВЫЙ ТУМБЛЕР: Авто-Оптимизация */}
+        <div className="flex items-center justify-between p-6 bg-[var(--panel-bg)] border border-[var(--panel-border)] rounded-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+              <Zap size={20} className="text-emerald-400" />
+            </div>
+            <div>
+              <h3 className="text-[var(--text-main)] font-semibold">Авто-Оптимизация игр</h3>
+              <p className="text-xs text-[var(--text-main)] opacity-50">Лаунчер сам включит Game Mode, когда вы запустите игру</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => {
+              alert("Авто-оптимизация всегда включена в фоне!");
+            }}
+            className={`w-12 h-6 rounded-full transition-colors relative shrink-0 bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.6)]`}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all left-7`} />
+          </button>
         </div>
 
         {/* Язык и О программе */}

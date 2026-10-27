@@ -897,7 +897,7 @@
     "repack_count_one": "{{count}} ریپک اضافه شد",
     "repack_count_other": "{{count}} ریپک اضافه شد",
     "new_update_available": "Version {{version}} available",
-    "restart_to_install_update": "Restart Hydra to install the update",
+    "restart_to_install_update": "Restart AetherForge to install the update",
     "notification_achievement_unlocked_title": "Achievement unlocked for {{game}}",
     "notification_achievement_unlocked_body": "{{achievement}} and other {{count}} were unlocked",
     "new_friend_request_description": "{{displayName}} sent you a friend request",

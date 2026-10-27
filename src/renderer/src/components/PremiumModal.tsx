@@ -1,5 +1,6 @@
 import { Crown, Check, X, Zap } from "lucide-react";
-import { auth } from "../firebase";
+import { doc, updateDoc } from "firebase/firestore";
+import { db, auth } from "../firebase";
 
 interface PremiumModalProps {
   isOpen: boolean;
@@ -19,6 +20,20 @@ export function PremiumModal({ isOpen, onClose }: PremiumModalProps) {
       if (!success) console.error("Не удалось открыть ссылку");
     } catch (e) {
       console.error("Ошибка открытия Telegram:", e);
+    }
+  };
+
+  // НОВАЯ ФУНКЦИЯ: Тестовая активация PRO
+  const handleTestPurchase = async () => {
+    const user = auth.currentUser;
+    if (!user) return alert("Войдите в аккаунт!");
+    
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { isPro: true });
+      alert("🎉 Тестовый PRO активирован! Выйдите из аккаунта и зайдите снова, чтобы обновить профил.");
+    } catch (e) {
+      alert("Ошибка обновления базы: " + e);
     }
   };
 
@@ -61,8 +76,8 @@ export function PremiumModal({ isOpen, onClose }: PremiumModalProps) {
         </div>
 
         <div className="flex items-end justify-center gap-2 mb-6">
-          <span className="text-4xl font-bold text-white">299</span>
-          <span className="text-white/50 mb-1">₽ / месяц</span>
+          <span className="text-4xl font-bold text-white">15</span>
+          <span className="text-white/50 mb-1">€ / Год</span>
         </div>
 
         <button
@@ -70,6 +85,14 @@ export function PremiumModal({ isOpen, onClose }: PremiumModalProps) {
           className="w-full py-4 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-black font-bold text-lg hover:scale-[1.02] transition-transform shadow-[0_0_25px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2"
         >
           <Zap size={20} /> Оформить подписку
+        </button>
+
+        {/* ТЕСТОВАЯ КНОПКА (удалить перед релизом) */}
+        <button 
+          onClick={handleTestPurchase}
+          className="mt-4 w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-lg transition-all"
+        >
+          🧪 Тестовая активация PRO
         </button>
         
         <p className="text-center text-xs text-white/30 mt-4">

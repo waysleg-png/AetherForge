@@ -1,6 +1,6 @@
 {
   "name": "AetherForge",
-  "version": "1.0.6",
+  "version": "1.0.17",
   "description": "AetherForge Optimizer",
   "main": "./out/main/index.js",
   "author": "waysleg-png",
@@ -170,13 +170,30 @@
     "appId": "com.aetherforge.optimizer",
     "productName": "AetherForge",
     "artifactName": "${productName}-Setup-${version}.${ext}",
+    "compression": "maximum",
     "npmRebuild": false,
     "directories": {
       "output": "dist"
     },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build",
+        "to": "build",
+        "filter": ["icon.ico"]
+      },
+      {
+        "from": "src/main/services/ram-cleaner.ps1",
+        "to": "ram-cleaner.ps1"
+      }
+    ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": false,

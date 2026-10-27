@@ -15,7 +15,6 @@ export function Support() {
     if (!currentUser) return;
 
     try {
-      // Ищем только тикеты текущего пользователя
       const q = query(
         collection(db, "support_tickets"),
         where("userId", "==", currentUser.uid)
@@ -28,7 +27,6 @@ export function Support() {
           date: doc.data().createdAt?.toDate().toLocaleString("ru-RU") || "Только что"
         }))
         .sort((a, b) => {
-          // Сортируем по дате (новые сверху)
           const timeA = a.createdAt?.seconds || 0;
           const timeB = b.createdAt?.seconds || 0;
           return timeB - timeA;
@@ -41,7 +39,6 @@ export function Support() {
   };
 
   useEffect(() => {
-    // Загружаем при открытии вкладки
     fetchMyTickets();
   }, []);
 
@@ -62,7 +59,7 @@ export function Support() {
 
       setIsSent(true);
       setMessage("");
-      await fetchMyTickets(); // Обновляем список после отправки
+      await fetchMyTickets();
       setTimeout(() => setIsSent(false), 5000);
     } catch (error) {
       console.error("Ошибка отправки сообщения:", error);
@@ -70,6 +67,10 @@ export function Support() {
     } finally {
       setIsSending(false);
     }
+  };
+
+  const openLink = (url: string) => {
+    (window as any).electron?.openExternal?.(url);
   };
 
   return (
@@ -101,20 +102,29 @@ export function Support() {
           <div className="p-6 rounded-2xl bg-[var(--panel-bg)] border border-[var(--panel-border)] backdrop-blur-xl">
             <h2 className="text-lg font-semibold mb-4 text-[var(--text-main)]">Наши контакты</h2>
             <div className="space-y-3">
-              <a href="#" className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group">
+              {/* Telegram */}
+              <button 
+                onClick={() => openLink("https://t.me/AetherForgeSupport")}
+                className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group w-full text-left"
+              >
                 <div className="flex items-center gap-3">
                   <MessageSquare size={18} className="text-cyan-400" />
                   <span className="text-sm text-[var(--text-main)]">Telegram чат</span>
                 </div>
                 <ExternalLink size={16} className="text-white/30 group-hover:text-white/70 transition-colors" />
-              </a>
-              <a href="#" className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group">
+              </button>
+
+              {/* Discord (заглушка) */}
+              <button 
+                onClick={() => openLink("https://discord.gg/твой-инвайт")}
+                className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 group w-full text-left"
+              >
                 <div className="flex items-center gap-3">
                   <MessageSquare size={18} className="text-purple-400" />
                   <span className="text-sm text-[var(--text-main)]">Discord сервер</span>
                 </div>
                 <ExternalLink size={16} className="text-white/30 group-hover:text-white/70 transition-colors" />
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -122,7 +132,6 @@ export function Support() {
         {/* Правая колонка */}
         <div className="w-1/2 flex flex-col gap-6">
           
-          {/* Форма отправки */}
           <div className="p-6 rounded-2xl bg-[var(--panel-bg)] border border-[var(--panel-border)] backdrop-blur-xl flex flex-col">
             <h2 className="text-lg font-semibold mb-1 text-[var(--text-main)]">Сообщить о проблеме</h2>
             <p className="text-sm opacity-50 mb-4 text-[var(--text-main)]">Опишите баг или вопрос. Мы обязательно свяжемся с вами.</p>
@@ -157,7 +166,6 @@ export function Support() {
             </div>
           </div>
 
-          {/* История обращений */}
           {myTickets.length > 0 && (
             <div className="p-6 rounded-2xl bg-[var(--panel-bg)] border border-[var(--panel-border)] backdrop-blur-xl">
               <h2 className="text-lg font-semibold mb-4 text-[var(--text-main)]">История обращений</h2>
@@ -179,7 +187,6 @@ export function Support() {
                       <span className="opacity-50">Вы: </span>{ticket.message}
                     </p>
 
-                    {/* Если админ ответил, показываем это */}
                     {ticket.adminReply && (
                       <div className="mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                         <div className="text-xs font-semibold text-emerald-400 mb-1">Ответ поддержки:</div>

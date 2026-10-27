@@ -3,7 +3,7 @@ import { auth, db } from "./firebase";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, updateProfile, onAuthStateChanged, User, signInAnonymously } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, onSnapshot } from "firebase/firestore";
 import { MailIcon, LockIcon, PersonIcon } from "@primer/octicons-react";
-import { Minus, Square, X, LogOut, Settings, User as UserIcon, Crown } from "lucide-react";
+import { Minus, Square, X, LogOut, Settings, User as UserIcon, Crown, Minimize2 } from "lucide-react";
 import { Sidebar } from "./components/sidebar/sidebar";
 import { Dashboard } from "./pages/Dashboard";
 import { Startup } from "./pages/Startup";
@@ -15,9 +15,13 @@ import { Support } from "./pages/Support";
 import { Profile } from "./pages/Profile"; 
 import { AdminPanel } from "./pages/AdminPanel";
 import { PremiumModal } from "./components/PremiumModal";
+import { ProTools } from "./pages/ProTools";
+import { Presets } from "./pages/Presets";
+import { Tweaks } from "./pages/Tweaks";
 import "./app.scss";
 
 export function App() {
+  const [uiMode, setUiMode] = useState<"normal" | "mini">("normal");
   const [openTicketsCount, setOpenTicketsCount] = useState(0);
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -39,6 +43,11 @@ export function App() {
 
   const [lang, setLang] = useState(localStorage.getItem("app-lang") || "ru");
 
+  // Данные для мини-режима
+  const [gpuStats, setGpuStats] = useState({ load: 0, temp: 0 });
+  const [ping, setPing] = useState(0);
+  const [isCleaning, setIsCleaning] = useState(false);
+
   useEffect(() => {
     const savedTheme = localStorage.getItem("app-theme") || "neon";
     document.body.className = `theme-${savedTheme}`;
@@ -49,6 +58,41 @@ export function App() {
     window.addEventListener("lang-changed", handleLangChange);
     return () => window.removeEventListener("lang-changed", handleLangChange);
   }, []);
+
+  // Слушаем изменение режима окна (Мини-режим)
+  useEffect(() => {
+    const unsub = (window as any).electron?.onChangeUiMode?.((mode: string) => {
+      setUiMode(mode as "normal" | "mini");
+    });
+    return () => unsub?.();
+  }, []);
+
+  // Запрос данных для мини-режима (с задержкой, чтобы сеть успела проснуться)
+  useEffect(() => {
+    if (uiMode !== "mini") return;
+    
+    // Первый запрос через 1 секунду
+    const firstTimeout = setTimeout(async () => {
+      const gpu = await (window as any).electron?.getGpuStats?.();
+      if (gpu) setGpuStats(gpu);
+      const net = await (window as any).electron?.getNetworkStats?.();
+      if (net) setPing(net.ping);
+    }, 1000);
+
+    // Дальше обновляем каждые 3 секунды
+    const interval = setInterval(async () => {
+      const gpu = await (window as any).electron?.getGpuStats?.();
+      if (gpu) setGpuStats(gpu);
+      
+      const net = await (window as any).electron?.getNetworkStats?.();
+      if (net) setPing(net.ping);
+    }, 3000);
+    
+    return () => {
+      clearTimeout(firstTimeout);
+      clearInterval(interval);
+    };
+  }, [uiMode]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -151,6 +195,65 @@ export function App() {
     );
   }
 
+  // ==========================================
+  // МИНИ-РЕЖИМ (ОВЕРЛЕЙ)
+  // ==========================================
+  if (uiMode === "mini") {
+    return (
+      <div className="w-full h-full bg-[#0a0a0f]/95 backdrop-blur-md border border-purple-500/30 p-3 flex flex-col justify-between select-none" style={{ WebkitAppRegion: "drag" } as any}>
+        {/* Шапка виджета */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-purple-400">AetherForge</span>
+          </div>
+          <button 
+            onClick={() => (window as any).electron?.disableMiniMode?.()}
+            className="text-xs text-white/50 hover:text-white bg-white/10 px-2 py-0.5 rounded transition-colors"
+            style={{ WebkitAppRegion: "no-drag" } as any}
+          >
+            Развернуть
+          </button>
+        </div>
+
+        {/* Данные */}
+        <div className="grid grid-cols-2 gap-2 my-2">
+          <div className="bg-black/40 rounded p-2 border border-white/5">
+            <div className="text-[10px] text-white/50">GPU</div>
+            <div className="text-lg font-bold text-rose-400">{gpuStats.load}%</div>
+          </div>
+          <div className="bg-black/40 rounded p-2 border border-white/5">
+            <div className="text-[10px] text-white/50">Пинг</div>
+            <div className="text-lg font-bold text-blue-400">{ping} ms</div>
+          </div>
+        </div>
+
+        {/* Кнопка очистки */}
+        <button 
+          onClick={async () => {
+            setIsCleaning(true);
+            try {
+              const res = await (window as any).electron?.cleanRamPro?.();
+              if (res?.success) alert('🚀 Оперативная память успешно очищена!');
+              else alert('⚠️ ' + (res?.error || 'Ошибка'));
+            } catch (e) {
+              alert("Ошибка при очистке");
+            } finally {
+              setIsCleaning(false);
+            }
+          }}
+          disabled={isCleaning}
+          className="w-full bg-emerald-500/20 text-emerald-400 text-xs font-bold py-1.5 rounded border border-emerald-500/50 hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+          style={{ WebkitAppRegion: "no-drag" } as any}
+        >
+          {isCleaning ? "Очистка..." : "🧹 Очистить RAM"}
+        </button>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // ОБЫЧНЫЙ РЕЖИМ
+  // ==========================================
   return (
     <div className="flex h-screen bg-transparent text-white font-sans overflow-hidden">
       
@@ -160,6 +263,7 @@ export function App() {
         lang={lang} 
         isAdmin={userData?.role === "admin"} 
         openTicketsCount={openTicketsCount} 
+        isPro={userData?.isPro === true}
       />
       
       <main className="flex-1 h-full overflow-hidden relative flex flex-col">
@@ -221,15 +325,9 @@ export function App() {
            </div>
            
            <div className="flex items-center gap-2">
-             {/* УСЛОВИЕ ДЛЯ PRO */}
              {userData?.isPro ? (
                <button 
-                 onClick={() => {
-                   // Здесь мы можем открыть модалку с информацией о PRO
-                   setIsPremiumOpen(true); 
-                   // Или просто показать сообщение:
-                   // alert("Вы PRO-пользователь! Спасибо за поддержку ❤️");
-                 }}
+                 onClick={() => setIsPremiumOpen(true)}
                  className="bg-gradient-to-r from-amber-400 to-orange-500 text-black text-xs font-bold px-3 py-1 rounded shadow-[0_0_15px_rgba(245,158,11,0.5)] mr-2 flex items-center gap-1 hover:scale-105 transition-transform cursor-pointer"
                  style={{ WebkitAppRegion: "no-drag" } as any}
                >
@@ -245,10 +343,19 @@ export function App() {
                </button>
              )}
              
+             {/* КНОПКИ УПРАВЛЕНИЯ ОКНОМ */}
              <div className="flex items-center ml-4" style={{ WebkitAppRegion: "no-drag" } as any}>
-                <button className="window-control" onClick={() => (window as any).electron?.minimizeMainWindow()}><Minus size={16} /></button>
-                <button className="window-control" onClick={() => (window as any).electron?.toggleMaximizeMainWindow()}><Square size={14} /></button>
-                <button className="window-control close" onClick={() => (window as any).electron?.closeMainWindow()}><X size={16} /></button>
+                <button 
+                  className="window-control hover:text-purple-400 transition-colors mr-2" 
+                  title="Мини-режим (Оверлей)"
+                  onClick={() => (window as any).electron?.enableMiniMode?.()}
+                >
+                  <Minimize2 size={14} />
+                </button>
+                
+                <button className="window-control" onClick={() => (window as any).electron?.minimizeMainWindow?.()}><Minus size={16} /></button>
+                <button className="window-control" onClick={() => (window as any).electron?.toggleMaximizeMainWindow?.()}><Square size={14} /></button>
+                <button className="window-control close" onClick={() => (window as any).electron?.closeMainWindow?.()}><X size={16} /></button>
              </div>
            </div>
         </div>
@@ -258,9 +365,12 @@ export function App() {
           {currentPage === "profile" && <Profile />}
           {currentPage === "cleanup" && <Cleanup />}
           {currentPage === "optimize" && <Optimize />}
+          {currentPage === "presets" && <Presets />}
+          {currentPage === "pro" && <ProTools userData={userData} onBuyPro={() => setIsPremiumOpen(true)} />}
           {currentPage === "startup" && <Startup />}
           {currentPage === "settings" && <SettingsPage />}
           {currentPage === "network" && <Network />}
+          {currentPage === "tweaks" && <Tweaks />}
           {currentPage === "support" && <Support />}
           {currentPage === "admin" && <AdminPanel />}
         </div>
