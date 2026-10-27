@@ -1,52 +1,142 @@
-<div align="center">
+\# ⚡ AetherForge Optimizer
 
-[<img src="https://raw.githubusercontent.com/hydralauncher/hydra/refs/heads/main/resources/icon.png" width="144"/>](https://help.hydralauncher.gg)
 
-  <h1 align="center">Hydra Launcher</h1>
 
-  <p align="center">
-    <strong>Hydra Launcher is an open-source gaming platform created to be the single tool that you need in order to manage your gaming library. Hydra is written in Node.js (Electron, React, Typescript) and Rust, with libtorrent providing the torrent engine.</strong>
-  </p>
+\*\*AetherForge\*\* — это мощный и стильный десктопный оптимизатор для Windows, созданный на базе Electron + React + TypeScript. Он не просто чистит мусор, а по-настоящему готовит вашу систему к играм, освобождая ресурсы и снижая задержки.
 
-[![build](https://img.shields.io/github/actions/workflow/status/hydralauncher/hydra/build.yml)](https://github.com/hydralauncher/hydra/actions)
-[![release](https://img.shields.io/github/package-json/v/hydralauncher/hydra)](https://github.com/hydralauncher/hydra/releases)
-[![chocolatey](https://img.shields.io/chocolatey/v/hydralauncher.svg)](https://community.chocolatey.org/packages/hydralauncher)
 
-![Hydra Launcher Home Page](./docs/screenshot.png)
 
-</div>
+<p align="center">
 
-## Features
+&#x20; <img src="https://img.shields.io/badge/version-1.0.18-purple?style=for-the-badge" alt="Version" />
 
-- Add games that you own to your library
-- Have a nice profile that shows what you are playing to your friends
-- Save your game progress in the cloud with Hydra Cloud
-- Unlock achievements
-- Navigate through a rich catalogue with a powerful suggestion algorithm
-- Discover new games that you haven't played before
+&#x20; <img src="https://img.shields.io/badge/platform-Windows-blue?style=for-the-badge\&logo=windows" alt="Platform" />
 
-## Build from source and contributing
+&#x20; <img src="https://img.shields.io/badge/Electron-41.0-47848F?style=for-the-badge\&logo=electron" alt="Electron" />
 
-Please, refer to our Documentation pages: [docs.hydralauncher.gg](https://docs.hydralauncher.gg/getting-started)
+&#x20; <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge\&logo=react" alt="React" />
 
-### Local development requirements
+</p>
 
-- Node.js + Yarn
-- Rust toolchain (for `hydra-native`)
-- Git and a C++ toolchain (Visual Studio C++ Build Tools on Windows, GCC/Clang on Linux, Xcode command-line tools on macOS). The native build obtains CMake and CTest automatically through vcpkg.
 
-After installing dependencies, `postinstall` now builds the Rust native addon automatically (`hydra-native/hydra-native.node`).
 
-The native build includes a Rust wrapper around pinned libtorrent. Development and packaged torrenting no longer require Python.
+\---
 
-On Windows x64 and Linux x64, the libtorrent bridge comes prebuilt from `native/torrent-bridge/prebuilt`, so installs skip compiling libtorrent through vcpkg. Other platforms build it from source. When a branch push changes `native/torrent-bridge` or `scripts/build-torrent-bridge.cjs`, the "Torrent bridge prebuilts" workflow rebuilds the binaries and commits them to that branch; until then, installs build the bridge from source. Set `HYDRA_TORRENT_BRIDGE_FROM_SOURCE=1` to always build it from source.
 
-## Contributors
 
-<a href="https://github.com/hydralauncher/hydra/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=hydralauncher/hydra" />
-</a>
+\## 🚀 Основные возможности
 
-## License
 
-Hydra is licensed under the [MIT License](LICENSE).
+
+\### 🖥 Системная оптимизация
+
+\*   \*\*Быстрая очистка\*\*: Удаление временных файлов, кэша браузеров, корзины и логов Windows.
+
+\*   \*\*Глубокая оптимизация\*\*: Настройка плана питания и очистка DNS.
+
+\*   \*\*Умный чистый запуск\*\*: Отключение лишних программ из автозагрузки с защитой системных драйверов (Realtek, NVIDIA).
+
+\*   \*\*Очистка SSD\*\*: Сброс кэша шейдеров видеокарт (NVIDIA/AMD/DirectX) и запуск TRIM для ускорения диска.
+
+
+
+\### 🎮 Игровые функции
+
+\*   \*\*Пресеты для игр\*\*: Один клик — и лаунчер закроет фоновые процессы (Chrome, Discord) и включит максимальную производительность для CS2, Valorant, Cyberpunk 2077 или стриминга.
+
+\*   \*\*Game Mode 2.0\*\*: Отключает Xbox Game Bar, останавливает фоновые службы Windows (Печать, Поиск) и переводит питание в режим «Максимальная производительность».
+
+\*   \*\*Авто-Оптимизация (Game Watcher)\*\*: Лаунчер работает в фоне и автоматически активирует Game Mode, как только вы запускаете игру.
+
+
+
+\### 💎 PRO-Инструменты (Подписка)
+
+\*   \*\*Умная очистка RAM\*\*: Глубокий сброс Standby List и Working Sets. Идеально перед запуском тяжелых игр.
+
+\*   \*\*Network Lag Reducer\*\*: Отключение алгоритма Nagle, TCP-твики и оптимизация DNS для снижения пинга.
+
+\*   \*\*Отключение телеметрии\*\*: Отключение сбора данных (DiagTrack) и Superfetch (SysMain) с возможностью отката.
+
+\*   \*\*Мониторинг в реальном времени\*\*: Отслеживание нагрузки на GPU, температуры и пинга.
+
+\*   \*\*Мини-режим (Оверлей)\*\*: Компактный виджет, который можно закрепить поверх всех окон, чтобы следить за FPS и пингом прямо во время игры.
+
+
+
+\### 🔧 Твики Windows (Бесплатно)
+
+\*   Отключение Wi-Fi и Bluetooth одним кликом.
+
+\*   Включение «Тихого режима» (отключение уведомлений).
+
+\*   Возврат классического меню Alt+Tab.
+
+
+
+\---
+
+
+
+\## 📸 Скриншоты
+
+
+
+\*(Здесь ты можешь добавить свои скриншоты. Просто загрузи их в папку `docs/` или прямо в GitHub и вставь ссылки)\*
+
+
+
+| Главная | PRO Инструменты | Мини-режим |
+
+| :---: | :---: | :---: |
+
+| \*\[Скриншот главной]\* | \*\[Скриншот PRO]\* | \*\[Скриншот оверлея]\* |
+
+
+
+\---
+
+
+
+\## 🛠 Установка и запуск
+
+
+
+\### Для пользователей:
+
+1\. Перейдите в раздел \[\*\*Releases\*\*](https://github.com/waysleg-png/AetherForge/releases).
+
+2\. Скачайте последний файл `AetherForge-Setup-X.X.X.exe`.
+
+3\. Запустите установщик и следуйте инструкциям.
+
+4\. Готово! Лаунчер автоматически проверяет обновления.
+
+
+
+\### Для разработчиков:
+
+```bash
+
+\# Клонировать репозиторий
+
+git clone https://github.com/waysleg-png/AetherForge.git
+
+
+
+\# Установить зависимости
+
+yarn install
+
+
+
+\# Запустить в режиме разработки
+
+yarn dev
+
+
+
+\# Собрать установщик (.exe)
+
+yarn dist
+
