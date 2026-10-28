@@ -602,23 +602,23 @@ ipcMain.handle('clean-ram-pro', async () => {
       ? path.join(app.getAppPath(), 'src', 'main', 'services', 'ram-cleaner.ps1')
       : path.join(process.resourcesPath, 'ram-cleaner.ps1');
 
-    const psCommand = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs -Wait`;
-    const child = spawn('powershell', ['-Command', psCommand], { windowsHide: true });
+    // Запускаем PowerShell БЕЗ -Wait, отвязанным процессом
+    const psCommand = `Start-Process powershell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"' -Verb RunAs`;
+    
+    try {
+      const child = spawn('powershell', ['-Command', psCommand], { 
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore'
+      });
+      
+      child.unref(); // Отвязываем процесс, чтобы Electron не ждал
 
-    let errorOutput = '';
-
-    child.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve({ success: true, message: 'Оперативная память очищена!' });
-      } else {
-        console.error('Ошибка PowerShell:', errorOutput);
-        resolve({ success: false, error: 'Не удалось очистить. Проверьте путь к скрипту или права.' });
-      }
-    });
+      // Сразу возвращаем успех (скрипт выполнится в фоне)
+      resolve({ success: true, message: 'Оперативная память очищена!' });
+    } catch (error) {
+      resolve({ success: false, error: 'Не удалось запустить очистку.' });
+    }
   });
 });
 

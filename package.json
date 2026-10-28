@@ -1,6 +1,6 @@
 {
   "name": "AetherForge",
-  "version": "1.0.17",
+  "version": "1.0.19",
   "description": "AetherForge Optimizer",
   "main": "./out/main/index.js",
   "author": "waysleg-png",

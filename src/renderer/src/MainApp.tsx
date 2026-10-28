@@ -43,7 +43,6 @@ export function App() {
 
   const [lang, setLang] = useState(localStorage.getItem("app-lang") || "ru");
 
-  // Данные для мини-режима
   const [gpuStats, setGpuStats] = useState({ load: 0, temp: 0 });
   const [ping, setPing] = useState(0);
   const [isCleaning, setIsCleaning] = useState(false);
@@ -64,14 +63,15 @@ export function App() {
     const unsub = (window as any).electron?.onChangeUiMode?.((mode: string) => {
       setUiMode(mode as "normal" | "mini");
     });
-    return () => unsub?.();
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
-  // Запрос данных для мини-режима (с задержкой, чтобы сеть успела проснуться)
+  // Запрос данных для мини-режима
   useEffect(() => {
     if (uiMode !== "mini") return;
     
-    // Первый запрос через 1 секунду
     const firstTimeout = setTimeout(async () => {
       const gpu = await (window as any).electron?.getGpuStats?.();
       if (gpu) setGpuStats(gpu);
@@ -79,7 +79,6 @@ export function App() {
       if (net) setPing(net.ping);
     }, 1000);
 
-    // Дальше обновляем каждые 3 секунды
     const interval = setInterval(async () => {
       const gpu = await (window as any).electron?.getGpuStats?.();
       if (gpu) setGpuStats(gpu);
@@ -162,16 +161,19 @@ export function App() {
     }
   };
 
+  // Оптимизированный слушатель тикетов (только для админа)
   useEffect(() => {
     if (userData?.role !== "admin") return;
 
     const q = query(collection(db, "support_tickets"), where("status", "==", "open"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setOpenTicketsCount(snapshot.size);
+    }, (error) => {
+      console.error("Ошибка загрузки тикетов:", error);
     });
 
     return () => unsubscribe();
-  }, [userData]);
+  }, [userData?.role]); // <--- Слушаем только изменение роли, а не всех данных
 
   if (!user) {
     return (
@@ -201,7 +203,6 @@ export function App() {
   if (uiMode === "mini") {
     return (
       <div className="w-full h-full bg-[#0a0a0f]/95 backdrop-blur-md border border-purple-500/30 p-3 flex flex-col justify-between select-none" style={{ WebkitAppRegion: "drag" } as any}>
-        {/* Шапка виджета */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-purple-400">AetherForge</span>
@@ -215,7 +216,6 @@ export function App() {
           </button>
         </div>
 
-        {/* Данные */}
         <div className="grid grid-cols-2 gap-2 my-2">
           <div className="bg-black/40 rounded p-2 border border-white/5">
             <div className="text-[10px] text-white/50">GPU</div>
@@ -227,7 +227,6 @@ export function App() {
           </div>
         </div>
 
-        {/* Кнопка очистки */}
         <button 
           onClick={async () => {
             setIsCleaning(true);
@@ -343,7 +342,6 @@ export function App() {
                </button>
              )}
              
-             {/* КНОПКИ УПРАВЛЕНИЯ ОКНОМ */}
              <div className="flex items-center ml-4" style={{ WebkitAppRegion: "no-drag" } as any}>
                 <button 
                   className="window-control hover:text-purple-400 transition-colors mr-2" 
