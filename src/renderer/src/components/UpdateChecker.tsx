@@ -1,125 +1,125 @@
 import { useState, useEffect } from "react";
-import { Download, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Download, Loader2, CheckCircle2 } from "lucide-react";
 
 export function UpdateChecker() {
-  const [status, setStatus] = useState<"idle" | "checking" | "no-updates" | "downloading" | "ready" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "checking" | "available" | "downloading" | "ready">("idle");
+  const [currentVersion, setCurrentVersion] = useState("...");
+  const [version, setVersion] = useState("");
+  const [url, setUrl] = useState("");
+  const [filePath, setFilePath] = useState("");
   const [progress, setProgress] = useState(0);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [appVersion, setAppVersion] = useState("1.0.0");
 
   useEffect(() => {
-    // Получаем актуальную версию из главного процесса
-    const fetchVersion = async () => {
-      try {
-        const ver = await (window as any).electron?.getVersion?.();
-        if (ver) setAppVersion(ver);
-      } catch (e) {
-        console.error("Не удалось получить версию:", e);
-      }
-    };
-    fetchVersion();
-
-    // Слушаем прогресс скачивания
-    const unsubProgress = (window as any).electron?.onUpdateProgress?.((data: any) => {
-      setStatus("downloading");
-      setProgress(data.percent);
+    // Получаем текущую версию при запуске
+    (window as any).electron?.getVersion?.().then((v: string) => {
+      if (v) setCurrentVersion(v);
     });
 
-    // Слушаем, когда обновление скачалось
-    const unsubDownloaded = (window as any).electron?.onUpdateDownloaded?.(() => {
-      setStatus("ready");
+    // Слушаем прогресс скачивания из главного процесса
+    (window as any).electron?.onCustomDownloadProgress?.((p: number) => {
+      setProgress(p);
+      if (p === 100) setStatus("ready");
     });
-
-    // Слушаем ошибки
-    const unsubError = (window as any).electron?.onUpdateError?.((msg: string) => {
-      setStatus("error");
-      setErrorMsg(msg);
-      setTimeout(() => setStatus("idle"), 5000);
-    });
-
-    return () => {
-      unsubProgress?.();
-      unsubDownloaded?.();
-      unsubError?.();
-    };
   }, []);
 
-  // Проверка обновлений по кнопке
   const handleCheck = async () => {
     setStatus("checking");
+    
+    // Защита: если через 6 секунд нет ответа, сбрасываем кнопку
+    const timeout = setTimeout(() => {
+      setStatus("idle");
+      alert("Сервер обновлений не отвечает. Проверьте интернет или попробуйте позже.");
+    }, 6000);
+
     try {
       const res = await (window as any).electron?.checkForUpdates?.();
+      clearTimeout(timeout); // Отменяем таймаут, так как ответ пришел
       
-      if (res?.available) {
-        setStatus("downloading");
+      if (res?.available && res.url) {
+        setVersion(res.version);
+        setUrl(res.url);
+        setStatus("available");
       } else {
-        setStatus("no-updates");
-        setTimeout(() => setStatus("idle"), 3000);
+        setStatus("idle");
+        if (res?.error) {
+          alert("Ошибка проверки: " + res.error);
+        } else {
+          alert("У вас последняя версия!");
+        }
       }
     } catch (e) {
+      clearTimeout(timeout);
       setStatus("idle");
+      alert("Ошибка сети при проверке обновлений.");
     }
   };
 
-  // Установка и перезапуск
-  const handleInstall = async () => {
-    try {
-      await (window as any).electron?.restartAndInstallUpdate?.();
-    } catch (e) {
-      console.error("Ошибка установки:", e);
+  const handleDownload = async () => {
+    setStatus("downloading");
+    setProgress(0);
+    const res = await (window as any).electron?.downloadUpdate?.(url, version);
+    if (res?.success) {
+      setFilePath(res.path);
+      setStatus("ready");
+    } else {
+      alert("Ошибка скачивания: " + res?.error);
+      setStatus("available");
     }
   };
 
-  return (
-    <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between gap-2 transition-all">
-      
-      <div className="flex items-center gap-2 text-xs text-white/50 min-w-0">
-        <Download size={14} className="shrink-0" />
-        
-        {status === "downloading" ? (
-          <span className="text-cyan-400 truncate">Скачивание {progress}%</span>
-        ) : status === "ready" ? (
-          <span className="text-emerald-400 truncate">Готово к установке</span>
-        ) : status === "error" ? (
-          <span className="text-red-400 truncate" title={errorMsg}>Ошибка</span>
-        ) : (
-          <span className="truncate">v{appVersion}</span>
-        )}
-      </div>
+  const handleInstall = () => {
+    (window as any).electron?.installUpdate?.(filePath);
+  };
 
-      {status === "downloading" ? (
-        <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden shrink-0">
-          <div 
-            className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-300" 
-            style={{ width: `${progress}%` }} 
-          />
+  // Состояние: Идет скачивание
+  if (status === "downloading") {
+    return (
+      <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-2">
+        <div className="flex justify-between text-xs text-white/70">
+          <span>Скачивание v{version}...</span>
+          <span>{progress}%</span>
         </div>
-      ) : status === "ready" ? (
-        <button
-          onClick={handleInstall}
-          className="text-xs px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-white shrink-0 shadow-[0_0_15px_rgba(16,185,129,0.6)] font-semibold animate-pulse"
+        <div className="h-1.5 bg-black/50 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  // Состояние: Скачано, готово к установке
+  if (status === "ready") {
+    return (
+      <button 
+        onClick={handleInstall} 
+        className="w-full p-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs whitespace-nowrap transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] flex items-center justify-center gap-2"
+      >
+        <CheckCircle2 size={16} /> Установить v{version}
+      </button>
+    );
+  }
+
+  // Состояние: Ожидание или проверка
+  return (
+    <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between">
+      <span className="text-sm text-white/70">v{currentVersion}</span>
+      
+      {status === "available" ? (
+        <button 
+          onClick={handleDownload} 
+          className="text-emerald-400 text-xs font-bold hover:underline flex items-center gap-1 whitespace-nowrap"
         >
-          <CheckCircle2 size={14} /> Установить
+          <Download size={14} /> Скачать v{version}
         </button>
+      ) : status === "checking" ? (
+        <span className="text-cyan-400 text-xs font-bold flex items-center gap-1">
+          <Loader2 size={14} className="animate-spin" /> Проверка...
+        </span>
       ) : (
-        <button
-          onClick={handleCheck}
-          disabled={status === "checking"}
-          className={`text-xs px-2 py-1 rounded-md transition-all flex items-center gap-1 shrink-0 ${
-            status === "checking" 
-              ? "text-white/30" 
-              : status === "no-updates"
-                ? "text-emerald-400 bg-emerald-500/10"
-                : "text-cyan-400 hover:bg-cyan-500/10"
-          }`}
+        <button 
+          onClick={handleCheck} 
+          className="text-cyan-400 text-sm font-bold hover:underline"
         >
-          {status === "checking" ? (
-            <><RefreshCw size={12} className="animate-spin" /> Проверка...</>
-          ) : status === "no-updates" ? (
-            <><CheckCircle2 size={12} /> Актуально</>
-          ) : (
-            <>Проверить</>
-          )}
+          Проверить
         </button>
       )}
     </div>

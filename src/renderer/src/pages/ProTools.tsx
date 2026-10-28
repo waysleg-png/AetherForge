@@ -306,10 +306,10 @@ export function ProTools({ userData, onBuyPro }: ProToolsProps) {
              <div className="bg-rose-500 h-2 rounded-full transition-all duration-500" style={{ width: `${gpuStats.load}%` }}></div>
           </div>
           <button 
-            onClick={() => alert("Функция 'Оверлей поверх игр' будет добавлена в следующем обновлении!")}
+            onClick={() => (window as any).electron?.enableMiniMode?.()}
             className="w-full py-2 rounded-lg text-sm font-bold text-white bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30 transition-all flex items-center justify-center gap-2"
           >
-            <Monitor size={16} /> Настроить оверлей
+            <Monitor size={16} /> Включить оверлей
           </button>
         </div>
 

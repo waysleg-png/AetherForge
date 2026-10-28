@@ -2,6 +2,9 @@ import {
   app, BrowserWindow, crashReporter, net, powerMonitor, protocol, ipcMain,
   shell,
 } from "electron";
+import https from "node:https";
+import { createWriteStream } from "node:fs";
+import axios from "axios";
 import si from "systeminformation";
 import updater from "electron-updater";
 import i18n from "i18next";
@@ -435,6 +438,7 @@ ipcMain.handle("sysopt:cleanup-run", async (_event, selectedCategories: string[]
   } catch { return { success: false }; }
 });
 
+autoUpdater.disableDifferentialDownload = true;
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
@@ -459,16 +463,64 @@ autoUpdater.on("error", (err) => {
   logger.error("Ошибка автообновления:", err);
 });
 
+// ==========================================
+// КАСТОМНОЕ АВТООБНОВЛЕНИЕ (ЧЕРЕЗ AXIOS)
+// ==========================================
 ipcMain.handle("checkForUpdates", async () => {
   try {
-    if (!app.isPackaged) {
-      return { available: false, message: "В режиме разработки проверка недоступна" };
+    if (!app.isPackaged) return { available: false, message: "Dev mode" };
+
+    // Жесткий таймаут на 5 секунд
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch("https://api.github.com/repos/waysleg-png/AetherForge/releases", {
+      headers: { 'User-Agent': 'AetherForge' },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return { available: false, error: `Ошибка GitHub: ${response.status}` };
     }
-    
-    const result = await autoUpdater.checkForUpdates();
-    if (result && result.updateInfo.version !== app.getVersion()) {
-      return { available: true, version: result.updateInfo.version };
+
+    const releases = await response.json();
+    const validReleases = releases.filter((r: any) => !r.draft && !r.prerelease);
+
+    if (validReleases.length === 0) return { available: false, error: "Релизы не найдены" };
+
+    // Сортируем по номеру версии (1.0.30 > 1.0.9)
+    validReleases.sort((a: any, b: any) => {
+      const vA = a.tag_name.replace('v', '').split('.').map(Number);
+      const vB = b.tag_name.replace('v', '').split('.').map(Number);
+      for (let i = 0; i < 3; i++) {
+        if ((vA[i] || 0) !== (vB[i] || 0)) return (vB[i] || 0) - (vA[i] || 0);
+      }
+      return 0;
+    });
+
+    const latestRelease = validReleases[0];
+    const latestVersion = latestRelease.tag_name.replace('v', '');
+    const currentVersion = app.getVersion();
+
+    const vLatest = latestVersion.split('.').map(Number);
+    const vCurrent = currentVersion.split('.').map(Number);
+    let isNewer = false;
+
+    for (let i = 0; i < 3; i++) {
+      if ((vLatest[i] || 0) > (vCurrent[i] || 0)) { isNewer = true; break; }
+      if ((vLatest[i] || 0) < (vCurrent[i] || 0)) { break; }
     }
+
+    if (isNewer) {
+      const exeAsset = latestRelease.assets.find((a: any) => a.name.endsWith('.exe'));
+      return { 
+        available: true, 
+        version: latestVersion, 
+        url: exeAsset ? exeAsset.browser_download_url : null 
+      };
+    }
+
     return { available: false };
   } catch (e: any) {
     logger.error("Ошибка проверки обновлений:", e);
@@ -476,68 +528,66 @@ ipcMain.handle("checkForUpdates", async () => {
   }
 });
 
-ipcMain.handle("restartAndInstallUpdate", () => {
-  try {
-    autoUpdater.quitAndInstall();
-    return true;
-  } catch (e) {
-    logger.error("Ошибка установки обновления:", e);
-    return false;
-  }
-});
+ipcMain.handle("downloadUpdate", async (event, url: string, version: string) => {
+  const filePath = path.join(app.getPath('temp'), `AetherForge-Setup-${version}.exe`);
+  
+  return new Promise((resolve) => {
+    const download = (downloadUrl: string) => {
+      https.get(downloadUrl, { headers: { 'User-Agent': 'AetherForge-Updater' } }, (response) => {
+        // Обработка редиректов GitHub
+        if ([301, 302, 303, 307].includes(response.statusCode || 0) && response.headers.location) {
+          return download(response.headers.location);
+        }
 
-// --- СТАРЫЙ ИГРОВОЙ РЕЖИМ (БЕСПЛАТНЫЙ) ---
-const GAME_MODE_SERVICES = ['Spooler', 'Fax', 'WSearch'];
+        if (response.statusCode !== 200) {
+          resolve({ success: false, error: `Ошибка сервера: ${response.statusCode}` });
+          return;
+        }
 
-ipcMain.handle("sysopt:game-mode", async (_event, enable: boolean) => {
-  try {
-    let results = [];
-    for (const service of GAME_MODE_SERVICES) {
-      try {
-        const command = enable ? `net stop ${service}` : `net start ${service}`;
-        await execAsync(command);
-        results.push({ service, success: true });
-      } catch (err: any) {
-        results.push({ service, success: false, error: err.message });
-      }
-    }
-    
-    return { 
-      success: true, 
-      message: enable ? "Службы остановлены" : "Службы запущены",
-      details: results 
+        const totalLength = parseInt(response.headers['content-length'] || '0', 10);
+        let downloaded = 0;
+        const file = createWriteStream(filePath);
+
+        response.on('data', (chunk) => {
+          downloaded += chunk.length;
+          if (totalLength > 0) {
+            const percent = Math.round((downloaded / totalLength) * 100);
+            event.sender.send('custom-download-progress', percent);
+          }
+        });
+
+        response.pipe(file);
+
+        file.on('finish', () => {
+          file.close();
+          resolve({ success: true, path: filePath });
+        });
+        
+        file.on('error', (err) => {
+          resolve({ success: false, error: err.message });
+        });
+      }).on('error', (err) => {
+        resolve({ success: false, error: err.message });
+      });
     };
-  } catch (error) {
-    logger.error("Ошибка Игрового режима:", error);
-    return { success: false, error: String(error) };
-  }
+    download(url);
+  });
 });
 
-// --- НОВЫЙ GAME MODE 2.0 (PRO) ---
-ipcMain.handle("toggle-game-mode-pro", async (_event, enable: boolean) => {
+ipcMain.handle("installUpdate", async (_event, filePath: string) => {
   try {
-    if (enable) {
-      const processesToKill = ["GameBar.exe", "GameBarFTServer.exe", "XboxGameBarWidgets.exe"];
-      for (const proc of processesToKill) {
-        try { await execAsync(`taskkill /F /IM ${proc} /T`); } catch {}
-      }
-      
-      for (const service of ['Spooler', 'Fax', 'WSearch']) {
-        try { await execAsync(`net stop ${service}`); } catch {}
-      }
-
-      await execAsync('powercfg /setactive 8e5e7fda-e8bf-4a96-9a85-a6e23a8c635c').catch(() => {});
-
-      return { success: true, message: "🔥 Game Mode 2.0 активирован! Xbox Game Bar отключен, службы остановлены." };
-    } else {
-      for (const service of ['Spooler', 'Fax', 'WSearch']) {
-        try { await execAsync(`net start ${service}`); } catch {}
-      }
-      return { success: true, message: "Game Mode выключен. Службы восстановлены." };
-    }
-  } catch (error: any) {
-    logger.error("Ошибка Game Mode 2.0:", error);
-    return { success: false, error: String(error) };
+    // Открываем установщик
+    await shell.openPath(filePath);
+    
+    // ЖЕСТКО убиваем лаунчер через 1 секунду, 
+    // чтобы установщик смог заменить файлы, а новый процесс запустился
+    setTimeout(() => {
+      app.exit(0); 
+    }, 1000);
+    
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: String(e) };
   }
 });
 

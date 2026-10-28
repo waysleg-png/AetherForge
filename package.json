@@ -1,6 +1,6 @@
 {
   "name": "AetherForge",
-  "version": "1.0.19",
+  "version": "1.0.32",
   "description": "AetherForge Optimizer",
   "main": "./out/main/index.js",
   "author": "waysleg-png",
@@ -199,7 +199,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true
     },
     "publish": {
       "provider": "github",

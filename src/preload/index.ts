@@ -25,12 +25,11 @@ contextBridge.exposeInMainWorld("electron", {
   // --- Версия ---
   getVersion: () => ipcRenderer.invoke("getVersion"),
 
-  // --- Обновления ---
+  // --- Обновления (Кастомные) ---
   checkForUpdates: () => ipcRenderer.invoke("checkForUpdates"),
-  restartAndInstallUpdate: () => ipcRenderer.invoke("restartAndInstallUpdate"),
-  onUpdateProgress: (cb: any) => { ipcRenderer.on("update-progress", (_e, d) => cb(d)); },
-  onUpdateDownloaded: (cb: any) => { ipcRenderer.on("update-downloaded", (_e, d) => cb(d)); },
-  onUpdateError: (cb: any) => { ipcRenderer.on("update-error", (_e, d) => cb(d)); },
+  downloadUpdate: (url: string, version: string) => ipcRenderer.invoke("downloadUpdate", url, version),
+  installUpdate: (filePath: string) => ipcRenderer.invoke("installUpdate", filePath),
+  onCustomDownloadProgress: (cb: any) => { ipcRenderer.on('custom-download-progress', (_e, p) => cb(p)); },
 
   // --- Система / Оптимизация ---
   getSystemStats: () => ipcRenderer.invoke("sysopt:system-stats"),
@@ -65,4 +64,5 @@ contextBridge.exposeInMainWorld("electron", {
   // --- Чистый запуск ---
   cleanBoot: () => ipcRenderer.invoke("sysopt:clean-boot"),
   restoreBoot: () => ipcRenderer.invoke("sysopt:restore-boot"),
+  
 });
